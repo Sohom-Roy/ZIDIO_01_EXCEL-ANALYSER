@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>X-Track - Dashboard</title>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: none !important;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    @keyframes gradient {
+      0% {background-position: 0% 50%;}
+      50% {background-position: 100% 50%;}
+      100% {background-position: 0% 50%;}
+    }
+    .container {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 0 25px rgba(0,0,0,0.5);
+      border: 1px solid rgba(72, 52, 212, 0.4);
+      backdrop-filter: blur(10px);
+      text-align: center;
+      width: 90%;
+      max-width: 500px;
+      position: relative; /* Needed for absolute button */
+    }
+    h1 {
+      color: #fff;
+      font-weight: 500;
+    }
+    p {
+      color: rgba(255,255,255,0.8);
+      margin-bottom: 25px;
+    }
+    input[type="file"] {
+      display: none;
+    }
+    label {
+      display: inline-block;
+      padding: 12px 20px;
+      background: #4834d4;
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    label:hover {
+      background: #3a2ab8;
+    }
+    .btn {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 10px 15px;
+      background: transparent;
+      border: 1px solid #ff4d4d;
+      color: #ff4d4d;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.3s, color 0.3s;
+    }
+    .btn:hover {
+      background: #ff4d4d;
+      color: white;
+    }
+    .message {
+      color: #4CAF50;
+      margin-top: 15px;
+      font-size: 14px;
+    }
+    .user-details-btn {
+      display: none;
+    }
+    #tableContainer table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #222;
+      color: #fff;
+      margin-top: 10px;
+      font-size: 15px;
+      box-shadow: 0 0 10px rgba(72,52,212,0.2);
+    }
+    #tableContainer th, #tableContainer td {
+      border: 1px solid #4834d4;
+      padding: 10px 8px;
+      text-align: left;
+      max-width: 220px;
+      word-break: break-word;
+    }
+    #tableContainer th {
+      background: #4834d4;
+      color: #fff;
+      font-weight: 500;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    #tableContainer tr:nth-child(even) td {
+      background: #2d2d2d;
+    }
+    #tableContainer tr:hover td {
+      background: #3a2ab8;
+      color: #fff;
+    }
+    #bgVideo {
+      position: fixed;
+      top: 0;
+      left: 0;
+      min-width: 100vw;
+      min-height: 100vh;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      z-index: -1;
+      opacity: 0.8; /* Adjust for desired effect */
+      background: #000;
+    }
+  </style>
+</head>
+<body>
+  <!-- Background Video -->
+  <video autoplay muted loop id="bgVideo">
+    <source src="video.mp4" type="video/mp4">
+    Your browser does not support the video tag.
+  </video>
+  <div class="container">
+    <h1>Welcome to X-Track</h1>
+    <p>Upload your file for analysis</p>
+    <input type="file" id="fileInput" accept=".csv, .xlsx, .xls, .txt">
+    <label for="fileInput">Choose File</label>
+    <div id="fileName" style="color:#ccc; margin-top:10px;"></div>
+    <button id="uploadBtn" class="btn" style="display:none;" disabled>Upload</button>
+    <button class="btn" onclick="logout()">Logout</button>
+    <div class="message" id="uploadMsg"></div>
+    <div id="tableContainer" style="margin-top:30px; overflow-x:auto;"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    // ---- Supabase Config ----
+    const SUPABASE_URL = "https://ebwkphvykgasngiaywiy.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVid2tpaHZ5a2dhc25naWF5d2l5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3MTczOTcsImV4cCI6MjA3MDI5MzM5N30.gZXuvzIdFtg1IU8byilVm2IEm_QVm90phq1bBJMQxoY";
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // Check if user is logged in
+    (async function checkSession() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) {
+        window.location.href = "login.html"; // back to login
+      }
+    })();
+
+    // Show selected file name and show upload button
+    document.getElementById("fileInput").addEventListener("change", function() {
+      const fileName = this.files.length ? this.files[0].name : "";
+      document.getElementById("fileName").textContent = fileName;
+      document.getElementById("uploadMsg").textContent = "";
+      document.getElementById("tableContainer").innerHTML = "";
+      const uploadBtn = document.getElementById("uploadBtn");
+      if (fileName) {
+        uploadBtn.style.display = "inline-block";
+        uploadBtn.disabled = false; // Enable button
+      } else {
+        uploadBtn.style.display = "none";
+        uploadBtn.disabled = true;
+      }
+    });
+
+    // Handle file upload
+    document.getElementById("uploadBtn").addEventListener("click", function() {
+      const fileInput = document.getElementById("fileInput");
+      if (fileInput.files.length > 0) {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        const fileExtension = file.name.split('.').pop().toLowerCase();
+
+        reader.onerror = function() {
+            document.getElementById("uploadMsg").textContent = "Error reading file.";
+        };
+
+        if (['xlsx', 'xls', 'csv'].includes(fileExtension)) {
+            reader.onload = function(e) {
+                const workbook = XLSX.read(e.target.result, { type: 'binary' });
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                sessionStorage.setItem('excelData', JSON.stringify(jsonData));
+                sessionStorage.setItem('fileName', file.name);
+                window.location.href = 'analysis.html';
+            };
+            reader.readAsBinaryString(file);
+        } else if (fileExtension === 'txt') {
+            reader.onload = function(e) {
+                const textData = e.target.result;
+                const rows = textData.split(/\r?\n/);
+                const jsonData = rows.map(row => row.split(','));
+                sessionStorage.setItem('excelData', JSON.stringify(jsonData));
+                sessionStorage.setItem('fileName', file.name);
+                window.location.href = 'analysis.html';
+            };
+            reader.readAsText(file);
+        } else {
+            document.getElementById("uploadMsg").textContent = "Unsupported file type. Please upload CSV, XLSX, XLS, or TXT.";
+        }
+      }
+    });
+
+    // Logout
+    async function logout() {
+      await supabaseClient.auth.signOut();
+      window.location.href = "login.html";
+    }
+  </script>
+</body>
+</html>
